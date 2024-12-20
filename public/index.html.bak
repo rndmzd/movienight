@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Custom Watch Party</title>
+  <style>
+    /* Basic styles for layout */
+    body { font-family: Arial, sans-serif; background-color: #f0f0f0; }
+    #video-container { position: relative; width: 80%; margin: auto; padding-top: 20px; }
+    video { width: 100%; border: 1px solid #ccc; }
+    #chat { width: 80%; margin: 20px auto; }
+    #messages { height: 200px; overflow-y: scroll; background-color: #fff; padding: 10px; border: 1px solid #ccc; }
+    #message-form { display: flex; }
+    #message-input { flex: 1; padding: 10px; }
+    #send-button { padding: 10px; }
+  </style>
+</head>
+<body>
+  <div id="video-container">
+    <video id="video" controls>
+      <source src="path_to_your_video.mp4" type="video/mp4">
+      Your browser does not support the video tag.
+    </video>
+  </div>
+
+  <div id="chat">
+    <div id="messages"></div>
+    <form id="message-form">
+      <input id="message-input" autocomplete="off" placeholder="Type a message..." /><button id="send-button">Send</button>
+    </form>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://unpkg.com/simple-peer@9.11.1/simplepeer.min.js"></script>
+  <script>
+    const socket = io();
+
+    // Prompt for room ID
+    const roomID = prompt("Enter Room ID:");
+
+    socket.emit('join-room', roomID);
+
+    // Initialize Peer connections
+    const peers = {};
+
+    socket.on('user-connected', (userID) => {
+      console.log('User connected:', userID);
+      const peer = new SimplePeer({ initiator: true, trickle: false });
+
+      peer.on('signal', (data) => {
+        socket.emit('signal', { to: userID, signal: data });
+      });
+
+      peer.on('connect', () => {
+        console.log('Peer connected:', userID);
+      });
+
+      peers[userID] = peer;
+    });
+
+    socket.on('signal', (data) => {
+      const { from, signal } = data;
+      if (!peers[from]) {
+        const peer = new SimplePeer({ initiator: false, trickle: false });
+        peer.on('signal', (data) => {
+          socket.emit('signal', { to: from, signal: data });
+        });
+        peer.on('connect', () => {
+          console.log('Peer connected:', from);
+        });
+        peers[from] = peer;
+      }
+      peers[from].signal(signal);
+    });
+
+    socket.on('user-disconnected', (userID) => {
+      console.log('User disconnected:', userID);
+      if (peers[userID]) peers[userID].destroy();
+      delete peers[userID];
+    });
+
+    // Playback synchronization
+    const video = document.getElementById('video');
+
+    video.addEventListener('play', () => {
+      socket.emit('playback', { action: 'play', currentTime: video.currentTime });
+    });
+
+    video.addEventListener('pause', () => {
+      socket.emit('playback', { action: 'pause', currentTime: video.currentTime });
+    });
+
+    video.addEventListener('seeked', () => {
+      socket.emit('playback', { action: 'seek', currentTime: video.currentTime });
+    });
+
+    socket.on('playback', (data) => {
+      if (data.action === 'play') {
+        video.currentTime = data.currentTime;
+        video.play();
+      } else if (data.action === 'pause') {
+        video.currentTime = data.currentTime;
+        video.pause();
+      } else if (data.action === 'seek') {
+        video.currentTime = data.currentTime;
+      }
+    });
+
+    // Chat functionality
+    const messages = document.getElementById('messages');
+    const form = document.getElementById('message-form');
+    const input = document.getElementById('message-input');
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      if (input.value) {
+        socket.emit('chat-message', input.value);
+        input.value = '';
+      }
+    });
+
+    socket.on('chat-message', (msg) => {
+      const item = document.createElement('div');
+      item.textContent = msg;
+      messages.appendChild(item);
+      messages.scrollTop = messages.scrollHeight;
+    });
+  </script>
+</body>
+</html>
