@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        height: 100%;
+        overflow: hidden;
+      }
+      video {
+        width: 100vw;
+        height: 100vh;
+        object-fit: cover;
+        background-color: black;
+      }
+    </style>
+    <title>Synced Video Player</title>
+  </head>
+  <body>
+    <video id="syncVideo" src="/videos/video.mp4" preload="auto"></video>
+    <script>
+      const video = document.getElementById("syncVideo");
+      video.controls = false;
+      video.autoplay = false;
+
+      // Replace 'example.com' with your domain or IP
+      const wsProtocol =
+        window.location.protocol === "https:" ? "wss://" : "ws://";
+      const ws = new WebSocket(wsProtocol + window.location.host + "/sync");
+
+      ws.onmessage = (event) => {
+        const msg = event.data;
+        if (msg === "play") {
+          video.play();
+        } else if (msg === "pause") {
+          video.pause();
+        } else if (msg.startsWith("seek:")) {
+          const time = parseFloat(msg.replace("seek:", ""));
+          video.currentTime = time;
+        }
+      };
+
+      // Optional: Attempt to synchronize all clients by forcing a short pause before playing
+      // when receiving a play command. This may help if clients load at slightly different rates.
+      // The server-side script should send 'seek:0' (or any other timestamp) before 'play'
+      // to ensure everyone starts at the same position.
+    </script>
+  </body>
+</html>
